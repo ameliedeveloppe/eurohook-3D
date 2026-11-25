@@ -104,7 +104,7 @@ def build_centerline():
 
 def sweep(centerline, radius, n_seg):
     """Sweep a circle along a polyline using parallel-transport frames."""
-    tangent = np.gradient(centerline, axis=0)
+    tangent = np.gradient(centerline, axis=0, edge_order=2)
     tangent /= np.linalg.norm(tangent, axis=1)[:, None]
 
     ref = np.array([0.0, 0.0, 1.0])
@@ -129,6 +129,8 @@ def sweep(centerline, radius, n_seg):
 
 def write_obj(path, verts, normals, tangents):
     n_ring, n_prof = verts.shape[1], verts.shape[0]
+    cap_a = verts[0].mean(axis=0)   # cap center at profile 0 (start of path)
+    cap_b = verts[-1].mean(axis=0)  # cap center at last profile
     lines = [
         "# Euro hook (pegboard hook) - looped euro hook, steel wire",
         "# Units: 1 unit = 1 mm. Panel face = plane x=0, arms point +X, +Z up.",
@@ -138,8 +140,8 @@ def write_obj(path, verts, normals, tangents):
     ]
     for p in verts.reshape(-1, 3):
         lines.append(f"v {p[0]:.4f} {p[1]:.4f} {p[2]:.4f}")
-    for p in tangents:
-        lines.append(f"v {p[0]:.4f} {p[1]:.4f} {p[2]:.4f}")  # 2 cap centers
+    for p in (cap_a, cap_b):
+        lines.append(f"v {p[0]:.4f} {p[1]:.4f} {p[2]:.4f}")
     for n in normals.reshape(-1, 3):
         lines.append(f"vn {n[0]:.5f} {n[1]:.5f} {n[2]:.5f}")
     for s, t in zip((-1.0, 1.0), (tangents[0], tangents[-1])):
@@ -162,7 +164,10 @@ def write_obj(path, verts, normals, tangents):
         for j in range(n_ring):
             a = ring0 + j
             b = ring0 + (j + 1) % n_ring
-            lines.append(f"f {a}//{cap_n} {b}//{cap_n} {cap_v}//{cap_n}")
+            # winding: outward normal is +tangent at the last profile,
+            # -tangent at the first one.
+            order = (a, b, cap_v) if cap_v is v_cap_b else (a, cap_v, b)
+            lines.append(f"f {order[0]}//{cap_n} {order[1]}//{cap_n} {order[2]}//{cap_n}")
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
 
